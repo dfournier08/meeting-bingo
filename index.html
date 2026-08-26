@@ -7,7 +7,6 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Alfa+Slab+One&family=Work+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
 <style>
   :root{
     --bg:#123832;
@@ -130,7 +129,12 @@
   .dot{width:8px; height:8px; border-radius:50%; background:#4bb37e; flex-shrink:0; box-shadow:0 0 6px #4bb37e;}
   .pname{font-weight:600; flex:1;}
   .sq-badge{font-family:'IBM Plex Mono',monospace; font-size:.75rem; color:var(--gold); background:rgba(217,164,65,0.15); padding:3px 8px; border-radius:20px;}
-  .empty-note{color:#8fb0a8; font-size:.85rem; padding:8px 4px;}
+  .preset-btn{
+    background:rgba(217,164,65,0.14); border:1.5px solid rgba(217,164,65,0.5); color:var(--gold);
+    padding:9px 14px; border-radius:20px; font-size:.82rem; font-weight:600; cursor:pointer;
+  }
+  .preset-btn:active{transform:scale(.97);}
+  .preset-btn.active{background:var(--gold); color:#2a1c05;}
 
   /* ---------- Game screen / tabs ---------- */
   .tabbar{
@@ -266,31 +270,12 @@
       <h2 style="margin:0 0 4px;">Set your card</h2>
       <p class="hint" style="margin-bottom:20px;">Enter exactly 24 items, one per line. They'll be shuffled onto a random 5×5 card for every player, with a FREE space in the middle.</p>
       <div class="field">
+        <label>Quick start (loads 24 items — edit after)</label>
+        <div id="preset-row" style="display:flex; flex-wrap:wrap; gap:8px;"></div>
+      </div>
+      <div class="field">
         <label>Bingo items</label>
-        <textarea id="items-input" placeholder="Someone's on mute
-&quot;Can everyone see my screen?&quot;
-Dog barks in the background
-&quot;Let's take this offline&quot;
-Someone joins 10 min late
-Awkward silence
-&quot;Can you hear me now?&quot;
-Wifi drops for someone
-&quot;Sorry, go ahead&quot;
-Meeting runs long
-&quot;Let's circle back&quot;
-Someone eating on camera
-Buzzword bingo (e.g. &quot;synergy&quot;)
-Screen share shows the wrong window
-Kid or pet crashes the call
-&quot;You're frozen&quot;
-Someone forgets to unmute
-&quot;Can we take this to email?&quot;
-Calendar invite has no agenda
-&quot;Quick question...&quot;
-Someone's in a car
-Camera off, no explanation
-&quot;Does that make sense?&quot;
-Meeting ends early (miracle)"></textarea>
+        <textarea id="items-input" placeholder="One item per line…"></textarea>
         <div style="display:flex; justify-content:space-between; margin-top:8px;">
           <span class="hint">One item per line</span>
           <span class="counter" id="items-counter">0 / 24</span>
@@ -310,7 +295,7 @@ Meeting ends early (miracle)"></textarea>
       <div class="code-stamp">
         <div class="stamp-inner mono" id="host-room-code">------</div>
       </div>
-      <canvas id="qr-canvas" width="180" height="180"></canvas>
+      <canvas id="qr-canvas" width="180" height="180" style="display:none;"></canvas>
       <div class="copy-row">
         <button class="btn btn-secondary btn-sm" style="flex:1;" id="copy-link-btn">🔗 Copy join link</button>
         <button class="btn btn-secondary btn-sm" style="flex:1;" id="copy-code-btn">📋 Copy code</button>
@@ -504,6 +489,52 @@ $('home-host-btn').onclick = () => { show('screen-create'); };
 $('home-join-btn').onclick = () => { show('screen-join'); };
 
 /* ================= CREATE ================= */
+const PRESETS = [
+  { name: 'Classic Meeting Fails', items: [
+    "Someone's on mute", '"Can everyone see my screen?"', 'Dog barks in the background',
+    '"Let\'s take this offline"', 'Someone joins 10 min late', 'Awkward silence',
+    '"Can you hear me now?"', 'Wifi drops for someone', '"Sorry, go ahead"',
+    'Meeting runs long', '"Let\'s circle back"', 'Someone eating on camera',
+    'Buzzword bingo ("synergy")', 'Screen share shows wrong window', 'Kid or pet crashes the call',
+    '"You\'re frozen"', 'Someone forgets to unmute', '"Can we take this to email?"',
+    'Calendar invite has no agenda', '"Quick question..."', "Someone's in a car",
+    'Camera off, no explanation', '"Does that make sense?"', 'Meeting ends early (miracle)'
+  ]},
+  { name: 'Corporate Buzzwords', items: [
+    '"Synergy"', '"Circle back"', '"Low-hanging fruit"', '"Move the needle"',
+    '"Bandwidth"', '"Deep dive"', '"Touch base"', '"Take it offline"',
+    '"Boil the ocean"', '"Value-add"', '"Paradigm shift"', '"Best practice"',
+    '"Actionable insights"', '"Growth mindset"', '"Leverage"', '"Ping me"',
+    '"Drill down"', '"On my radar"', '"Bang for the buck"', '"Win-win"',
+    '"Think outside the box"', '"Game changer"', '"At the end of the day"', '"Let\'s take a step back"'
+  ]},
+  { name: 'WFH Chaos', items: [
+    'Doorbell rings mid-call', 'Kid walks in on camera', '"Sorry, my internet is bad"',
+    "Someone's in bed", 'Loud typing during a question', 'Cat walks across the keyboard',
+    '"Can you repeat that?"', 'Blurry virtual background glitch', "Someone's clearly driving",
+    'Delivery truck backs up outside', 'Coffee refill mid-meeting', 'Someone joins from another room, audio only',
+    'Laundry buzzer goes off', '"One sec, my kid needs something"', 'Echo/feedback from two devices',
+    'Forgot to change out of pajama top', 'Dog needs to go out mid-call', '"Can everyone mute please"',
+    'Screen share shows a messy desktop', 'Spouse walks through the background', '"Let me just close this tab real quick"',
+    'Someone eating cereal on camera', "Neighbor's lawnmower drowns out the call", 'Invite says 30 min, runs 90'
+  ]}
+];
+function renderPresets(){
+  const row = $('preset-row');
+  row.innerHTML = PRESETS.map((p,i) => `<button type="button" class="preset-btn" data-i="${i}">${escHtml(p.name)}</button>`).join('');
+  row.querySelectorAll('.preset-btn').forEach(btn => {
+    btn.onclick = () => {
+      const preset = PRESETS[btn.dataset.i];
+      itemsInput.value = preset.items.join('\n');
+      refreshCounter();
+      row.querySelectorAll('.preset-btn').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+    };
+  });
+}
+function escHtml(s){ return (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+renderPresets();
+
 const itemsInput = $('items-input');
 const itemsCounter = $('items-counter');
 function currentItems(){
@@ -547,17 +578,6 @@ function enterHostDashboard(code){
   state.isHost = true;
   $('host-room-code').textContent = code;
   const link = `${baseUrl()}?room=${code}`;
-  try{
-    if(typeof QRCode !== 'undefined'){
-      QRCode.toCanvas($('qr-canvas'), link, { width:180, margin:1, color:{dark:'#1c332e', light:'#ffffff'} });
-    } else {
-      $('qr-canvas').style.display = 'none';
-      toast('QR code blocked by browser — use the link or code instead');
-    }
-  }catch(qrErr){
-    console.warn('QR render failed', qrErr);
-    $('qr-canvas').style.display = 'none';
-  }
 
   $('copy-link-btn').onclick = () => { navigator.clipboard.writeText(link); toast('Join link copied'); };
   $('copy-code-btn').onclick = () => { navigator.clipboard.writeText(code); toast('Room code copied'); };
