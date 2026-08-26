@@ -1,0 +1,906 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>Meeting Bingo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Alfa+Slab+One&family=Work+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+<style>
+  :root{
+    --bg:#123832;
+    --bg-deep:#0d2c27;
+    --felt-line:rgba(255,255,255,0.05);
+    --card:#efe3c8;
+    --card-hi:#f7efdb;
+    --ink:#1c332e;
+    --ink-soft:#4a5f59;
+    --gold:#d9a441;
+    --gold-deep:#b9812a;
+    --red:#b23a2e;
+    --red-deep:#8f2c22;
+    --teal-mid:#4f8c82;
+    --line:#c9b98e;
+    --radius:14px;
+    --shadow:0 6px 18px rgba(0,0,0,0.28);
+    font-size:16px;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    background:
+      radial-gradient(ellipse at 20% -10%, #1a4941 0%, transparent 55%),
+      repeating-linear-gradient(45deg, var(--felt-line) 0 2px, transparent 2px 40px),
+      var(--bg);
+    color:var(--card);
+    font-family:'Work Sans', sans-serif;
+    min-height:100%;
+    display:flex;
+    flex-direction:column;
+  }
+  h1,h2,h3,.stamp-font{font-family:'Alfa Slab One', cursive; letter-spacing:0.5px;}
+  .mono{font-family:'IBM Plex Mono', monospace;}
+  #app{flex:1; display:flex; flex-direction:column; min-height:100vh;}
+  .screen{display:none; flex:1; flex-direction:column;}
+  .screen.active{display:flex;}
+  .wrap{max-width:520px; margin:0 auto; width:100%; padding:24px 20px 40px; flex:1; display:flex; flex-direction:column;}
+
+  /* ---------- Home ---------- */
+  .home-hero{text-align:center; margin-top:8vh; margin-bottom:36px;}
+  .home-hero .badge{
+    display:inline-block; transform:rotate(-4deg);
+    border:3px solid var(--gold); color:var(--gold);
+    padding:4px 14px; border-radius:8px; font-family:'IBM Plex Mono',monospace;
+    font-size:12px; letter-spacing:2px; text-transform:uppercase; margin-bottom:18px;
+  }
+  .home-hero h1{font-size:2.6rem; color:var(--card-hi); margin:0 0 8px; line-height:1.05;
+    text-shadow:0 3px 0 rgba(0,0,0,0.25);}
+  .home-hero p{color:#bcd3cd; font-size:0.98rem; margin:0; max-width:340px; margin-inline:auto;}
+  .home-actions{display:flex; flex-direction:column; gap:14px; margin-top:auto; padding-top:40px;}
+
+  /* ---------- Buttons ---------- */
+  .btn{
+    appearance:none; border:none; border-radius:12px; padding:16px 20px;
+    font-family:'Work Sans',sans-serif; font-weight:700; font-size:1rem;
+    cursor:pointer; text-align:center; display:flex; align-items:center; justify-content:center; gap:10px;
+    transition:transform .12s ease, box-shadow .12s ease; box-shadow:var(--shadow);
+  }
+  .btn:active{transform:translateY(2px) scale(.99); box-shadow:0 2px 6px rgba(0,0,0,.25);}
+  .btn-primary{background:var(--gold); color:#2a1c05;}
+  .btn-secondary{background:transparent; color:var(--card-hi); border:2px solid rgba(247,239,219,0.35);}
+  .btn-danger{background:var(--red); color:#fff2ed;}
+  .btn-block{width:100%;}
+  .btn-sm{padding:10px 14px; font-size:.85rem; border-radius:9px;}
+  .btn:disabled{opacity:.45; cursor:not-allowed;}
+
+  /* ---------- Form elements ---------- */
+  label{display:block; font-size:.78rem; text-transform:uppercase; letter-spacing:1.2px; color:#a9c4bd; margin-bottom:6px; font-weight:600;}
+  input[type=text], textarea{
+    width:100%; border:none; border-radius:10px; padding:13px 14px; font-family:'Work Sans',sans-serif;
+    font-size:1rem; background:var(--card-hi); color:var(--ink); outline:none; border:2px solid transparent;
+  }
+  input[type=text]:focus, textarea:focus{border-color:var(--gold);}
+  textarea{min-height:220px; resize:vertical; line-height:1.5; font-family:'IBM Plex Mono',monospace; font-size:.92rem;}
+  .field{margin-bottom:18px;}
+  .hint{font-size:.78rem; color:#8fb0a8; margin-top:6px;}
+  .counter{font-family:'IBM Plex Mono',monospace; font-size:.78rem; color:var(--gold);}
+  .counter.ok{color:#7bc79a;}
+
+  .panel{
+    background:rgba(0,0,0,0.18); border:1px solid rgba(255,255,255,0.08);
+    border-radius:var(--radius); padding:18px; margin-bottom:16px;
+  }
+  .top-bar{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    padding:14px 20px; background:var(--bg-deep); border-bottom:1px solid rgba(255,255,255,0.08);
+    position:sticky; top:0; z-index:5;
+  }
+  .top-bar .room-chip{
+    font-family:'IBM Plex Mono',monospace; background:rgba(217,164,65,0.15); color:var(--gold);
+    border:1px solid rgba(217,164,65,0.4); padding:5px 10px; border-radius:7px; font-size:.85rem; letter-spacing:1.5px;
+  }
+  .icon-btn{background:none; border:none; color:#cfe2dd; font-size:1.1rem; cursor:pointer; padding:6px;}
+  .back-link{color:#a9c4bd; text-decoration:none; font-size:.85rem; display:inline-flex; align-items:center; gap:6px; margin-bottom:18px; cursor:pointer; background:none; border:none; font-family:inherit;}
+
+  .disclaimer{
+    display:flex; gap:10px; align-items:flex-start; background:rgba(178,58,46,0.13);
+    border:1px solid rgba(178,58,46,0.4); border-radius:10px; padding:12px 14px; font-size:.82rem; color:#f0d7d0; margin-bottom:20px;
+  }
+  .disclaimer b{color:#f3b9ab;}
+
+  /* ---------- Host dashboard ---------- */
+  .code-stamp{
+    text-align:center; margin:6px 0 20px;
+  }
+  .code-stamp .stamp-inner{
+    display:inline-block; border:4px solid var(--gold); color:var(--gold); border-radius:14px;
+    padding:14px 26px; transform:rotate(-2.5deg); font-family:'IBM Plex Mono',monospace;
+    font-size:2rem; letter-spacing:6px; font-weight:600;
+  }
+  #qr-canvas{display:block; margin:14px auto 0; border-radius:10px; background:#fff; padding:8px;}
+  .copy-row{display:flex; gap:10px; margin-top:14px;}
+  .players-list{list-style:none; margin:0; padding:0;}
+  .players-list li{
+    display:flex; align-items:center; gap:10px; padding:10px 4px; border-bottom:1px solid rgba(255,255,255,0.07);
+  }
+  .players-list li:last-child{border-bottom:none;}
+  .dot{width:8px; height:8px; border-radius:50%; background:#4bb37e; flex-shrink:0; box-shadow:0 0 6px #4bb37e;}
+  .pname{font-weight:600; flex:1;}
+  .sq-badge{font-family:'IBM Plex Mono',monospace; font-size:.75rem; color:var(--gold); background:rgba(217,164,65,0.15); padding:3px 8px; border-radius:20px;}
+  .empty-note{color:#8fb0a8; font-size:.85rem; padding:8px 4px;}
+
+  /* ---------- Game screen / tabs ---------- */
+  .tabbar{
+    display:flex; background:var(--bg-deep); border-top:1px solid rgba(255,255,255,0.08);
+    padding-bottom:env(safe-area-inset-bottom); position:sticky; bottom:0; z-index:5;
+  }
+  .tab-btn{
+    flex:1; background:none; border:none; color:#8fa9a2; padding:12px 4px 10px; font-family:'Work Sans',sans-serif;
+    font-weight:600; font-size:.78rem; display:flex; flex-direction:column; align-items:center; gap:3px; cursor:pointer; position:relative;
+  }
+  .tab-btn .ico{font-size:1.2rem;}
+  .tab-btn.active{color:var(--gold);}
+  .tab-panel{display:none; flex:1; flex-direction:column;}
+  .tab-panel.active{display:flex;}
+  .tab-dot{position:absolute; top:8px; right:22%; width:8px; height:8px; border-radius:50%; background:var(--red); display:none;}
+  .tab-dot.show{display:block;}
+
+  /* Bingo card grid */
+  .card-wrap{padding:16px 16px 8px;}
+  .bgrid{
+    display:grid; grid-template-columns:repeat(5,1fr); gap:6px; background:var(--card);
+    border-radius:16px; padding:10px; box-shadow:var(--shadow);
+  }
+  .bsq{
+    aspect-ratio:1/1; background:var(--card-hi); border-radius:8px; display:flex; align-items:center; justify-content:center;
+    text-align:center; font-size:.68rem; font-weight:600; color:var(--ink); padding:5px; line-height:1.15;
+    position:relative; cursor:pointer; user-select:none; border:2px solid #ddcda0;
+  }
+  .bsq.free{background:var(--gold); color:#2a1c05; font-family:'Alfa Slab One',cursive; font-size:.9rem; border-color:var(--gold-deep);}
+  .bsq .stamp-mark{
+    position:absolute; inset:0; border-radius:8px; display:none; align-items:center; justify-content:center;
+    pointer-events:none;
+  }
+  .bsq.marked .stamp-mark{display:flex;}
+  .bsq.marked:not(.free){background:#e4d6ae;}
+  .bsq .stamp-mark svg{width:78%; height:78%; opacity:0.88;}
+  .bingo-call-btn{
+    margin:14px 16px 6px; padding:16px; border-radius:14px; background:var(--red); color:#fff2ed;
+    font-family:'Alfa Slab One',cursive; font-size:1.3rem; letter-spacing:2px; border:none; width:calc(100% - 32px);
+    box-shadow:0 6px 0 var(--red-deep), var(--shadow); cursor:pointer;
+  }
+  .bingo-call-btn:active{transform:translateY(4px); box-shadow:0 2px 0 var(--red-deep);}
+  .call-log{padding:0 20px 10px; font-size:.78rem; color:#8fb0a8;}
+
+  /* Chat */
+  .chat-subtabs{display:flex; gap:8px; padding:12px 16px 4px;}
+  .subtab{
+    flex:1; text-align:center; padding:9px; border-radius:9px; background:rgba(255,255,255,0.06); color:#cfe2dd;
+    font-size:.82rem; font-weight:600; cursor:pointer;
+  }
+  .subtab.active{background:var(--gold); color:#2a1c05;}
+  .chat-body{flex:1; display:flex; flex-direction:column; min-height:0;}
+  .chat-messages{flex:1; overflow-y:auto; padding:12px 16px; display:flex; flex-direction:column; gap:8px;}
+  .msg{max-width:78%; padding:9px 12px; border-radius:12px; font-size:.88rem; line-height:1.35;}
+  .msg .who{font-size:.68rem; text-transform:uppercase; letter-spacing:.6px; opacity:.65; margin-bottom:2px; display:block;}
+  .msg.mine{align-self:flex-end; background:var(--gold); color:#2a1c05; border-bottom-right-radius:3px;}
+  .msg.theirs{align-self:flex-start; background:rgba(255,255,255,0.1); color:var(--card-hi); border-bottom-left-radius:3px;}
+  .chat-input-row{display:flex; gap:8px; padding:10px 16px calc(10px + env(safe-area-inset-bottom)); border-top:1px solid rgba(255,255,255,0.08);}
+  .chat-input-row input{flex:1;}
+  .send-btn{background:var(--gold); border:none; border-radius:10px; padding:0 16px; color:#2a1c05; font-weight:700; cursor:pointer;}
+  .dm-target-list{padding:6px 16px;}
+  .dm-target{
+    display:flex; align-items:center; gap:10px; padding:11px 6px; border-bottom:1px solid rgba(255,255,255,0.07); cursor:pointer;
+  }
+  .dm-target:hover{background:rgba(255,255,255,0.04);}
+  .dm-thread-header{display:flex; align-items:center; gap:10px; padding:10px 16px; background:rgba(0,0,0,0.15); font-weight:600; font-size:.9rem;}
+  .dm-thread-header button{margin-left:auto; background:none; border:none; color:#a9c4bd; cursor:pointer; font-size:.85rem;}
+
+  /* Players tab */
+  .players-tab{padding:14px 16px;}
+
+  /* Bingo banner overlay */
+  #bingo-banner{
+    position:fixed; inset:0; display:none; align-items:center; justify-content:center; z-index:50;
+    background:rgba(10,25,22,0.72); backdrop-filter:blur(2px);
+  }
+  #bingo-banner.show{display:flex;}
+  .banner-card{
+    text-align:center; animation:stampdown .38s cubic-bezier(.2,1.4,.4,1);
+  }
+  .banner-card .big{
+    font-family:'Alfa Slab One',cursive; font-size:3.2rem; color:var(--red); border:6px solid var(--red);
+    padding:14px 30px; border-radius:16px; transform:rotate(-6deg); display:inline-block; letter-spacing:2px;
+    background:rgba(0,0,0,0.2);
+  }
+  .banner-card .who{margin-top:16px; font-size:1.1rem; color:var(--card-hi); font-weight:600;}
+  .banner-card .sub{margin-top:4px; font-size:.8rem; color:#bcd3cd;}
+  @keyframes stampdown{
+    0%{transform:scale(2.4) rotate(-14deg); opacity:0;}
+    60%{transform:scale(0.94) rotate(-4deg); opacity:1;}
+    100%{transform:scale(1) rotate(0deg); opacity:1;}
+  }
+
+  #ended-screen .wrap{align-items:center; justify-content:center; text-align:center;}
+
+  ::-webkit-scrollbar{width:6px;}
+  ::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.15); border-radius:4px;}
+
+  .toast{
+    position:fixed; left:50%; bottom:90px; transform:translateX(-50%); background:var(--gold); color:#2a1c05;
+    padding:10px 18px; border-radius:30px; font-size:.85rem; font-weight:600; box-shadow:var(--shadow); z-index:60;
+    opacity:0; pointer-events:none; transition:opacity .25s ease;
+  }
+  .toast.show{opacity:1;}
+
+  @media (min-width:600px){
+    .home-hero h1{font-size:3.2rem;}
+  }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ============ HOME ============ -->
+  <div class="screen active" id="screen-home">
+    <div class="wrap">
+      <div class="home-hero">
+        <div class="badge">Live &middot; Honor System</div>
+        <h1>Meeting<br>Bingo</h1>
+        <p>Turn your next call into a game. One card per person, live chat, and bragging rights when you call it.</p>
+      </div>
+      <div class="home-actions">
+        <button class="btn btn-primary btn-block" id="home-host-btn">🎙️ Host a Game</button>
+        <button class="btn btn-secondary btn-block" id="home-join-btn">🎟️ Join a Game</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ CREATE (host sets items) ============ -->
+  <div class="screen" id="screen-create">
+    <div class="wrap">
+      <button class="back-link" id="create-back">← Back</button>
+      <h2 style="margin:0 0 4px;">Set your card</h2>
+      <p class="hint" style="margin-bottom:20px;">Enter exactly 24 items, one per line. They'll be shuffled onto a random 5×5 card for every player, with a FREE space in the middle.</p>
+      <div class="field">
+        <label>Bingo items</label>
+        <textarea id="items-input" placeholder="Someone's on mute
+&quot;Can everyone see my screen?&quot;
+Dog barks in the background
+&quot;Let's take this offline&quot;
+Someone joins 10 min late
+Awkward silence
+&quot;Can you hear me now?&quot;
+Wifi drops for someone
+&quot;Sorry, go ahead&quot;
+Meeting runs long
+&quot;Let's circle back&quot;
+Someone eating on camera
+Buzzword bingo (e.g. &quot;synergy&quot;)
+Screen share shows the wrong window
+Kid or pet crashes the call
+&quot;You're frozen&quot;
+Someone forgets to unmute
+&quot;Can we take this to email?&quot;
+Calendar invite has no agenda
+&quot;Quick question...&quot;
+Someone's in a car
+Camera off, no explanation
+&quot;Does that make sense?&quot;
+Meeting ends early (miracle)"></textarea>
+        <div style="display:flex; justify-content:space-between; margin-top:8px;">
+          <span class="hint">One item per line</span>
+          <span class="counter" id="items-counter">0 / 24</span>
+        </div>
+      </div>
+      <button class="btn btn-primary btn-block" id="create-submit" disabled>Create Room</button>
+    </div>
+  </div>
+
+  <!-- ============ HOST DASHBOARD ============ -->
+  <div class="screen" id="screen-host">
+    <div class="top-bar">
+      <span class="stamp-font" style="font-size:1rem; color:var(--card-hi);">Host</span>
+      <button class="icon-btn" id="host-leave-btn" title="Close dashboard">✕</button>
+    </div>
+    <div class="wrap">
+      <div class="code-stamp">
+        <div class="stamp-inner mono" id="host-room-code">------</div>
+      </div>
+      <canvas id="qr-canvas" width="180" height="180"></canvas>
+      <div class="copy-row">
+        <button class="btn btn-secondary btn-sm" style="flex:1;" id="copy-link-btn">🔗 Copy join link</button>
+        <button class="btn btn-secondary btn-sm" style="flex:1;" id="copy-code-btn">📋 Copy code</button>
+      </div>
+
+      <div class="panel" style="margin-top:22px;">
+        <h3 style="margin:0 0 10px; font-size:1rem;">Players online</h3>
+        <ul class="players-list" id="host-players-list">
+          <li class="empty-note">Waiting for players to join…</li>
+        </ul>
+      </div>
+
+      <div class="panel">
+        <h3 style="margin:0 0 10px; font-size:1rem;">Bingo calls</h3>
+        <ul class="players-list" id="host-calls-list">
+          <li class="empty-note">No calls yet</li>
+        </ul>
+      </div>
+
+      <button class="btn btn-danger btn-block" id="end-game-btn">End Game for Everyone</button>
+    </div>
+  </div>
+
+  <!-- ============ JOIN ============ -->
+  <div class="screen" id="screen-join">
+    <div class="wrap">
+      <button class="back-link" id="join-back">← Back</button>
+      <h2 style="margin:0 0 18px;">Join a game</h2>
+      <div class="field">
+        <label>Room code</label>
+        <input type="text" id="join-code" placeholder="ABC123" maxlength="6" autocapitalize="characters" class="mono">
+      </div>
+      <div class="field">
+        <label>Your name</label>
+        <input type="text" id="join-name" placeholder="How should others see you?" maxlength="24">
+      </div>
+      <div class="disclaimer">
+        <span>🤝</span>
+        <div><b>Honor system:</b> Bingo calls aren't auto-verified — only call it if you've genuinely got it. Play nice.</div>
+      </div>
+      <div id="join-error" class="hint" style="color:#f3b9ab; min-height:18px;"></div>
+      <button class="btn btn-primary btn-block" id="join-submit">Grab a Card</button>
+    </div>
+  </div>
+
+  <!-- ============ GAME ============ -->
+  <div class="screen" id="screen-game">
+    <div class="top-bar">
+      <span class="room-chip mono" id="game-room-code">------</span>
+      <span class="stamp-font" style="font-size:.95rem; color:var(--card-hi);" id="game-player-name"></span>
+      <button class="icon-btn" id="leave-game-btn" title="Leave">✕</button>
+    </div>
+
+    <!-- CARD TAB -->
+    <div class="tab-panel active" id="tab-card">
+      <div class="card-wrap">
+        <div class="bgrid" id="bgrid"></div>
+      </div>
+      <button class="bingo-call-btn" id="call-bingo-btn">🔔 CALL BINGO!</button>
+      <div class="call-log" id="game-call-log"></div>
+    </div>
+
+    <!-- CHAT TAB -->
+    <div class="tab-panel" id="tab-chat">
+      <div class="chat-subtabs">
+        <div class="subtab active" id="subtab-public">Public</div>
+        <div class="subtab" id="subtab-private">Private</div>
+      </div>
+      <div class="chat-body" id="public-chat-view">
+        <div class="chat-messages" id="public-messages"></div>
+        <div class="chat-input-row">
+          <input type="text" id="public-msg-input" placeholder="Say something to everyone…" maxlength="200">
+          <button class="send-btn" id="public-send-btn">Send</button>
+        </div>
+      </div>
+      <div class="chat-body" id="private-chat-view" style="display:none;">
+        <div id="dm-list-view">
+          <div class="dm-target-list" id="dm-target-list"></div>
+        </div>
+        <div id="dm-thread-view" style="display:none; flex:1; flex-direction:column; min-height:0;">
+          <div class="dm-thread-header">
+            <span id="dm-thread-name">—</span>
+            <button id="dm-back-btn">← All chats</button>
+          </div>
+          <div class="chat-messages" id="dm-messages"></div>
+          <div class="chat-input-row">
+            <input type="text" id="dm-msg-input" placeholder="Private message…" maxlength="200">
+            <button class="send-btn" id="dm-send-btn">Send</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PLAYERS TAB -->
+    <div class="tab-panel" id="tab-players">
+      <div class="players-tab">
+        <h3 style="margin:0 0 10px; font-size:1rem;">Who's here</h3>
+        <ul class="players-list" id="game-players-list"></ul>
+      </div>
+    </div>
+
+    <div class="tabbar">
+      <button class="tab-btn active" data-tab="card"><span class="ico">🎴</span>Card</button>
+      <button class="tab-btn" data-tab="chat"><span class="ico">💬</span>Chat<span class="tab-dot" id="chat-dot"></span></button>
+      <button class="tab-btn" data-tab="players"><span class="ico">👥</span>Players</button>
+    </div>
+  </div>
+
+  <!-- ============ ENDED ============ -->
+  <div class="screen" id="screen-ended">
+    <div class="wrap">
+      <h1 class="stamp-font" style="font-size:2rem;">Game Over</h1>
+      <p style="color:#bcd3cd;">The host ended this Meeting Bingo game. Thanks for playing!</p>
+      <button class="btn btn-primary" id="ended-home-btn" style="margin-top:20px;">Back to Home</button>
+    </div>
+  </div>
+
+</div>
+
+<div id="bingo-banner">
+  <div class="banner-card">
+    <div class="big">BINGO!</div>
+    <div class="who" id="banner-who"></div>
+    <div class="sub">Honor system — tap anywhere to dismiss</div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import {
+  getDatabase, ref, set, update, get, child, push, onValue, onChildAdded,
+  onDisconnect, serverTimestamp, remove
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyC3i7Cg7-8WbUZ3mDCl3DnddwQ3Wa4Ubi8",
+  authDomain: "meeting-bingo-9c37e.firebaseapp.com",
+  databaseURL: "https://meeting-bingo-9c37e-default-rtdb.firebaseio.com",
+  projectId: "meeting-bingo-9c37e",
+  storageBucket: "meeting-bingo-9c37e.firebasestorage.app",
+  messagingSenderId: "434457896557",
+  appId: "1:434457896557:web:dccc461210dfd939424164"
+};
+const fbApp = initializeApp(firebaseConfig);
+const db = getDatabase(fbApp);
+
+/* ---------------- helpers ---------------- */
+const $ = (id) => document.getElementById(id);
+const show = (id) => {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  $(id).classList.add('active');
+};
+function toast(msg){
+  const t = $('toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toast._t); toast._t = setTimeout(()=>t.classList.remove('show'), 2200);
+}
+function genCode(len=6){
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let out=''; for(let i=0;i<len;i++) out += chars[Math.floor(Math.random()*chars.length)];
+  return out;
+}
+function genId(){ return 'p_' + Math.random().toString(36).slice(2,10) + Date.now().toString(36); }
+function shuffle(arr){
+  const a = arr.slice();
+  for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; }
+  return a;
+}
+function baseUrl(){
+  return location.origin + location.pathname;
+}
+
+/* ---------------- app state ---------------- */
+let state = {
+  roomCode: null,
+  playerId: null,
+  playerName: null,
+  isHost: false,
+  card: null,        // array of 25 {text, free}
+  marks: null,        // array of 25 bool
+  players: {},
+  dmTarget: null,
+  seenBingoKeys: new Set(),
+  bingoListenerReady: false,
+  seenChatInit: false,
+};
+
+/* ================= HOME ================= */
+$('home-host-btn').onclick = () => { show('screen-create'); };
+$('home-join-btn').onclick = () => { show('screen-join'); };
+
+/* ================= CREATE ================= */
+const itemsInput = $('items-input');
+const itemsCounter = $('items-counter');
+function currentItems(){
+  return itemsInput.value.split('\n').map(s=>s.trim()).filter(Boolean);
+}
+function refreshCounter(){
+  const n = currentItems().length;
+  itemsCounter.textContent = `${n} / 24`;
+  itemsCounter.classList.toggle('ok', n === 24);
+  $('create-submit').disabled = n !== 24;
+}
+itemsInput.addEventListener('input', refreshCounter);
+refreshCounter();
+
+$('create-back').onclick = () => show('screen-home');
+
+$('create-submit').onclick = async () => {
+  const items = currentItems();
+  if(items.length !== 24){ toast('Need exactly 24 items'); return; }
+  const code = genCode();
+  $('create-submit').disabled = true;
+  $('create-submit').textContent = 'Creating…';
+  try{
+    await set(ref(db, `rooms/${code}`), {
+      config: { items, createdAt: Date.now() },
+      status: 'active'
+    });
+    localStorage.setItem('mb_host_'+code, '1');
+    enterHostDashboard(code);
+  }catch(e){
+    console.error(e);
+    toast('Could not create room — check your connection');
+    $('create-submit').disabled = false;
+    $('create-submit').textContent = 'Create Room';
+  }
+};
+
+/* ================= HOST DASHBOARD ================= */
+function enterHostDashboard(code){
+  state.roomCode = code;
+  state.isHost = true;
+  $('host-room-code').textContent = code;
+  const link = `${baseUrl()}?room=${code}`;
+  QRCode.toCanvas($('qr-canvas'), link, { width:180, margin:1, color:{dark:'#1c332e', light:'#ffffff'} });
+
+  $('copy-link-btn').onclick = () => { navigator.clipboard.writeText(link); toast('Join link copied'); };
+  $('copy-code-btn').onclick = () => { navigator.clipboard.writeText(code); toast('Room code copied'); };
+
+  onValue(ref(db, `rooms/${code}/players`), (snap) => {
+    const players = snap.val() || {};
+    const list = $('host-players-list');
+    const entries = Object.entries(players);
+    if(entries.length === 0){
+      list.innerHTML = '<li class="empty-note">Waiting for players to join…</li>';
+      return;
+    }
+    list.innerHTML = entries.map(([id,p]) => `
+      <li>
+        <span class="dot" style="background:${p.online ? '#4bb37e':'#5c6f6a'}; box-shadow:${p.online?'0 0 6px #4bb37e':'none'};"></span>
+        <span class="pname">${escapeHtml(p.name||'Player')}</span>
+        <span class="sq-badge">${p.squaresMarked||0}/24</span>
+      </li>`).join('');
+  });
+
+  onValue(ref(db, `rooms/${code}/bingoCalls`), (snap) => {
+    const calls = snap.val() || {};
+    const list = $('host-calls-list');
+    const entries = Object.values(calls).sort((a,b)=>(a.ts||0)-(b.ts||0));
+    if(entries.length===0){ list.innerHTML = '<li class="empty-note">No calls yet</li>'; return; }
+    list.innerHTML = entries.map(c => `<li><span>🔔</span><span class="pname">${escapeHtml(c.name)}</span></li>`).reverse().join('');
+  });
+
+  $('end-game-btn').onclick = async () => {
+    if(!confirm('End this game for everyone? This cannot be undone.')) return;
+    await update(ref(db, `rooms/${code}`), { status: 'ended' });
+    toast('Game ended');
+  };
+
+  $('host-leave-btn').onclick = () => { show('screen-home'); };
+
+  show('screen-host');
+}
+
+/* ================= JOIN ================= */
+$('join-back').onclick = () => show('screen-home');
+
+const urlParams = new URLSearchParams(location.search);
+if(urlParams.get('room')){
+  $('join-code').value = urlParams.get('room').toUpperCase();
+  show('screen-join');
+}
+if(urlParams.get('host')){
+  const hCode = urlParams.get('host').toUpperCase();
+  if(localStorage.getItem('mb_host_'+hCode)) enterHostDashboard(hCode);
+}
+
+$('join-submit').onclick = async () => {
+  const code = $('join-code').value.trim().toUpperCase();
+  const name = $('join-name').value.trim();
+  const errEl = $('join-error');
+  errEl.textContent = '';
+  if(!code || !name){ errEl.textContent = 'Enter a room code and your name.'; return; }
+
+  $('join-submit').disabled = true; $('join-submit').textContent = 'Joining…';
+  try{
+    const roomSnap = await get(ref(db, `rooms/${code}`));
+    if(!roomSnap.exists()){ errEl.textContent = 'No game found with that code.'; resetJoinBtn(); return; }
+    const room = roomSnap.val();
+    if(room.status === 'ended'){ errEl.textContent = 'This game has already ended.'; resetJoinBtn(); return; }
+
+    // reuse existing card if this browser already joined this room
+    const saved = JSON.parse(localStorage.getItem('mb_'+code) || 'null');
+    let playerId = saved && saved.playerId ? saved.playerId : null;
+
+    if(playerId){
+      const pSnap = await get(ref(db, `rooms/${code}/players/${playerId}`));
+      if(!pSnap.exists()) playerId = null;
+    }
+
+    if(!playerId){
+      // enforce one card per name (case-insensitive) among currently known players
+      const playersSnap = await get(ref(db, `rooms/${code}/players`));
+      const players = playersSnap.val() || {};
+      const taken = Object.values(players).some(p => (p.name||'').toLowerCase() === name.toLowerCase());
+      if(taken){ errEl.textContent = 'That name already has a card in this game — try another name.'; resetJoinBtn(); return; }
+
+      playerId = genId();
+      const items = room.config.items;
+      const shuffled = shuffle(items);
+      const card = [];
+      let ptr = 0;
+      for(let i=0;i<25;i++){
+        if(i===12){ card.push({text:'FREE', free:true}); }
+        else { card.push({text: shuffled[ptr++], free:false}); }
+      }
+      const marks = card.map(c => !!c.free);
+
+      await set(ref(db, `rooms/${code}/players/${playerId}`), {
+        name, card, marks, squaresMarked:0, online:true, joinedAt: Date.now()
+      });
+      localStorage.setItem('mb_'+code, JSON.stringify({playerId, name}));
+    } else {
+      await update(ref(db, `rooms/${code}/players/${playerId}`), { online:true });
+    }
+
+    enterGame(code, playerId, name);
+  }catch(e){
+    console.error(e);
+    errEl.textContent = 'Something went wrong — check your connection and try again.';
+    resetJoinBtn();
+  }
+};
+function resetJoinBtn(){ $('join-submit').disabled = false; $('join-submit').textContent = 'Grab a Card'; }
+
+/* ================= GAME ================= */
+function escapeHtml(s){
+  return (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+const stampSvg = `<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="34" fill="none" stroke="#b23a2e" stroke-width="8" stroke-dasharray="4 6" opacity="0.85"/></svg>`;
+
+async function enterGame(code, playerId, name){
+  state.roomCode = code; state.playerId = playerId; state.playerName = name; state.isHost = false;
+
+  $('game-room-code').textContent = code;
+  $('game-player-name').textContent = name;
+
+  // presence
+  const myRef = ref(db, `rooms/${code}/players/${playerId}`);
+  const connectedRef = ref(db, '.info/connected');
+  onValue(connectedRef, (snap) => {
+    if(snap.val() === true){
+      onDisconnect(child(myRef, 'online')).set(false);
+      update(myRef, { online:true });
+    }
+  });
+
+  // room status
+  onValue(ref(db, `rooms/${code}/status`), (snap) => {
+    if(snap.val() === 'ended'){
+      show('screen-ended');
+    }
+  });
+
+  // my card
+  const pSnap = await get(myRef);
+  const pData = pSnap.val();
+  state.card = pData.card;
+  state.marks = pData.marks;
+  renderCard();
+
+  // all players (for online list + squares)
+  onValue(ref(db, `rooms/${code}/players`), (snap) => {
+    state.players = snap.val() || {};
+    renderPlayersList();
+    renderDmTargets();
+  });
+
+  // bingo calls -> banner
+  const callsRef = ref(db, `rooms/${code}/bingoCalls`);
+  let firstCallSnapshot = true;
+  onValue(callsRef, (snap) => {
+    const calls = snap.val() || {};
+    const keys = Object.keys(calls);
+    if(firstCallSnapshot){
+      keys.forEach(k => state.seenBingoKeys.add(k));
+      firstCallSnapshot = false;
+      renderCallLog(calls);
+      return;
+    }
+    keys.forEach(k => {
+      if(!state.seenBingoKeys.has(k)){
+        state.seenBingoKeys.add(k);
+        showBingoBanner(calls[k].name);
+      }
+    });
+    renderCallLog(calls);
+  });
+
+  // public chat
+  const pubRef = ref(db, `rooms/${code}/publicChat`);
+  let firstPub = true;
+  onValue(pubRef, (snap) => {
+    const msgs = snap.val() || {};
+    renderPublicChat(msgs);
+    if(!firstPub && document.querySelector('.tab-btn[data-tab="chat"]').classList.contains('active') === false){
+      $('chat-dot').classList.add('show');
+    }
+    firstPub = false;
+  });
+
+  $('call-bingo-btn').onclick = async () => {
+    await push(ref(db, `rooms/${code}/bingoCalls`), { name: state.playerName, ts: Date.now() });
+  };
+
+  $('leave-game-btn').onclick = () => {
+    if(confirm('Leave this game? Your card stays saved on this device if you want to come back.')){
+      update(myRef, { online:false });
+      show('screen-home');
+    }
+  };
+
+  setupTabs();
+  setupChat();
+  show('screen-game');
+}
+
+function renderCard(){
+  const grid = $('bgrid');
+  grid.innerHTML = '';
+  state.card.forEach((cell, i) => {
+    const div = document.createElement('div');
+    div.className = 'bsq' + (cell.free ? ' free' : '') + (state.marks[i] ? ' marked' : '');
+    div.innerHTML = `<span>${escapeHtml(cell.text)}</span><span class="stamp-mark">${stampSvg}</span>`;
+    if(!cell.free){
+      div.onclick = () => toggleMark(i);
+    }
+    grid.appendChild(div);
+  });
+}
+
+async function toggleMark(i){
+  state.marks[i] = !state.marks[i];
+  renderCard();
+  const count = state.marks.filter((m,idx)=> m && !state.card[idx].free).length;
+  await update(ref(db, `rooms/${state.roomCode}/players/${state.playerId}`), {
+    marks: state.marks, squaresMarked: count
+  });
+}
+
+function showBingoBanner(name){
+  $('banner-who').textContent = `${name} called it!`;
+  $('bingo-banner').classList.add('show');
+}
+$('bingo-banner').onclick = () => $('bingo-banner').classList.remove('show');
+
+function renderCallLog(calls){
+  const entries = Object.values(calls||{}).sort((a,b)=>(a.ts||0)-(b.ts||0));
+  const log = $('game-call-log');
+  if(entries.length===0){ log.textContent=''; return; }
+  log.textContent = 'Called so far: ' + entries.map(c=>c.name).join(', ');
+}
+
+function renderPlayersList(){
+  const list = $('game-players-list');
+  const entries = Object.entries(state.players);
+  if(entries.length===0){ list.innerHTML = '<li class="empty-note">Just you so far…</li>'; return; }
+  list.innerHTML = entries.map(([id,p]) => `
+    <li>
+      <span class="dot" style="background:${p.online?'#4bb37e':'#5c6f6a'}; box-shadow:${p.online?'0 0 6px #4bb37e':'none'};"></span>
+      <span class="pname">${escapeHtml(p.name)}${id===state.playerId?' (you)':''}</span>
+      <span class="sq-badge">${p.squaresMarked||0}/24</span>
+    </li>`).join('');
+}
+
+/* ---- tabs ---- */
+function setupTabs(){
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+      btn.classList.add('active');
+      $('tab-'+btn.dataset.tab).classList.add('active');
+      if(btn.dataset.tab==='chat') $('chat-dot').classList.remove('show');
+    };
+  });
+}
+
+/* ---- chat ---- */
+function setupChat(){
+  $('subtab-public').onclick = () => {
+    $('subtab-public').classList.add('active'); $('subtab-private').classList.remove('active');
+    $('public-chat-view').style.display='flex'; $('private-chat-view').style.display='none';
+  };
+  $('subtab-private').onclick = () => {
+    $('subtab-private').classList.add('active'); $('subtab-public').classList.remove('active');
+    $('private-chat-view').style.display='flex'; $('public-chat-view').style.display='none';
+  };
+
+  $('public-send-btn').onclick = sendPublic;
+  $('public-msg-input').addEventListener('keydown', e => { if(e.key==='Enter') sendPublic(); });
+
+  $('dm-back-btn').onclick = () => {
+    $('dm-list-view').style.display='block'; $('dm-thread-view').style.display='none';
+    state.dmTarget = null;
+  };
+  $('dm-send-btn').onclick = sendDm;
+  $('dm-msg-input').addEventListener('keydown', e => { if(e.key==='Enter') sendDm(); });
+}
+
+async function sendPublic(){
+  const input = $('public-msg-input');
+  const text = input.value.trim();
+  if(!text) return;
+  input.value='';
+  await push(ref(db, `rooms/${state.roomCode}/publicChat`), { name: state.playerName, text, ts: Date.now() });
+}
+
+function renderPublicChat(msgs){
+  const box = $('public-messages');
+  const atBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 40;
+  const entries = Object.values(msgs||{}).sort((a,b)=>(a.ts||0)-(b.ts||0));
+  box.innerHTML = entries.map(m => `
+    <div class="msg ${m.name===state.playerName?'mine':'theirs'}">
+      <span class="who">${escapeHtml(m.name)}</span>${escapeHtml(m.text)}
+    </div>`).join('');
+  if(atBottom || entries.length<=1) box.scrollTop = box.scrollHeight;
+}
+
+function pairKey(a,b){ return [a,b].sort().join('__'); }
+
+function renderDmTargets(){
+  const list = $('dm-target-list');
+  const others = Object.entries(state.players).filter(([id])=>id!==state.playerId);
+  if(others.length===0){ list.innerHTML = '<div class="empty-note">No one else has joined yet</div>'; return; }
+  list.innerHTML = others.map(([id,p]) => `
+    <div class="dm-target" data-id="${id}" data-name="${escapeHtml(p.name)}">
+      <span class="dot" style="background:${p.online?'#4bb37e':'#5c6f6a'};"></span>
+      <span class="pname">${escapeHtml(p.name)}</span>
+      <span>›</span>
+    </div>`).join('');
+  list.querySelectorAll('.dm-target').forEach(el => {
+    el.onclick = () => openDm(el.dataset.id, el.dataset.name);
+  });
+}
+
+let dmUnsub = null;
+function openDm(targetId, targetName){
+  state.dmTarget = targetId;
+  $('dm-thread-name').textContent = targetName;
+  $('dm-list-view').style.display='none'; $('dm-thread-view').style.display='flex';
+  const key = pairKey(state.playerId, targetId);
+  onValue(ref(db, `rooms/${state.roomCode}/chats/${key}`), (snap) => {
+    const msgs = snap.val() || {};
+    const box = $('dm-messages');
+    const entries = Object.values(msgs).sort((a,b)=>(a.ts||0)-(b.ts||0));
+    box.innerHTML = entries.map(m => `
+      <div class="msg ${m.from===state.playerId?'mine':'theirs'}">
+        <span class="who">${escapeHtml(m.fromName)}</span>${escapeHtml(m.text)}
+      </div>`).join('');
+    box.scrollTop = box.scrollHeight;
+  });
+}
+
+async function sendDm(){
+  if(!state.dmTarget) return;
+  const input = $('dm-msg-input');
+  const text = input.value.trim();
+  if(!text) return;
+  input.value='';
+  const key = pairKey(state.playerId, state.dmTarget);
+  await push(ref(db, `rooms/${state.roomCode}/chats/${key}`), {
+    from: state.playerId, fromName: state.playerName, text, ts: Date.now()
+  });
+}
+
+$('ended-home-btn').onclick = () => { location.href = baseUrl(); };
+</script>
+</body>
+</html>
