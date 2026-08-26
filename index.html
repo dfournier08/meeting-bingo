@@ -155,13 +155,14 @@
   /* Bingo card grid */
   .card-wrap{padding:16px 16px 8px;}
   .bgrid{
-    display:grid; grid-template-columns:repeat(5,1fr); gap:6px; background:var(--card);
-    border-radius:16px; padding:10px; box-shadow:var(--shadow);
+    display:grid; grid-template-columns:repeat(5, minmax(0,1fr)); gap:6px; background:var(--card);
+    border-radius:16px; padding:10px; box-shadow:var(--shadow); width:100%; max-width:100%;
   }
   .bsq{
     aspect-ratio:1/1; background:var(--card-hi); border-radius:8px; display:flex; align-items:center; justify-content:center;
     text-align:center; font-size:.68rem; font-weight:600; color:var(--ink); padding:5px; line-height:1.15;
     position:relative; cursor:pointer; user-select:none; border:2px solid #ddcda0;
+    min-width:0; overflow:hidden; overflow-wrap:break-word; word-break:break-word; hyphens:auto;
   }
   .bsq.free{background:var(--gold); color:#2a1c05; font-family:'Alfa Slab One',cursive; font-size:.9rem; border-color:var(--gold-deep);}
   .bsq .stamp-mark{
@@ -305,6 +306,8 @@
         <button class="btn btn-secondary btn-sm" style="flex:1;" id="copy-code-btn">📋 Copy code</button>
       </div>
 
+      <button class="btn btn-primary btn-block" id="host-join-own-btn" style="margin-top:14px;">🎴 Join as a Player</button>
+
       <div class="panel" style="margin-top:22px;">
         <h3 style="margin:0 0 10px; font-size:1rem;">Players online</h3>
         <ul class="players-list" id="host-players-list">
@@ -359,6 +362,7 @@
     <div class="top-bar">
       <span class="room-chip mono" id="game-room-code">------</span>
       <span class="stamp-font" style="font-size:.95rem; color:var(--card-hi);" id="game-player-name"></span>
+      <button class="icon-btn" id="game-to-dashboard-btn" title="Host dashboard" style="display:none;">🛠️</button>
       <button class="icon-btn" id="leave-game-btn" title="Leave">✕</button>
     </div>
 
@@ -641,6 +645,14 @@ function enterHostDashboard(code){
   $('copy-link-btn').onclick = () => { navigator.clipboard.writeText(link); toast('Join link copied'); };
   $('copy-code-btn').onclick = () => { navigator.clipboard.writeText(code); toast('Room code copied'); };
 
+  $('host-join-own-btn').onclick = () => {
+    $('join-code').value = code;
+    $('join-code').readOnly = true;
+    $('join-back').style.display = 'none';
+    show('screen-join');
+    $('join-name').focus();
+  };
+
   onValue(ref(db, `rooms/${code}/players`), (snap) => {
     const players = snap.val() || {};
     const list = $('host-players-list');
@@ -786,10 +798,13 @@ function escapeHtml(s){
 const stampSvg = `<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="34" fill="none" stroke="#b23a2e" stroke-width="8" stroke-dasharray="4 6" opacity="0.85"/></svg>`;
 
 async function enterGame(code, playerId, name){
-  state.roomCode = code; state.playerId = playerId; state.playerName = name; state.isHost = false;
+  const hostOfThisRoom = localStorage.getItem('mb_host_'+code) === '1';
+  state.roomCode = code; state.playerId = playerId; state.playerName = name; state.isHost = hostOfThisRoom;
 
   $('game-room-code').textContent = code;
   $('game-player-name').textContent = name;
+  $('game-to-dashboard-btn').style.display = hostOfThisRoom ? 'inline-flex' : 'none';
+  $('game-to-dashboard-btn').onclick = () => enterHostDashboard(code);
 
   // presence
   const myRef = ref(db, `rooms/${code}/players/${playerId}`);
