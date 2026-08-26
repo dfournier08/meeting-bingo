@@ -547,7 +547,17 @@ function enterHostDashboard(code){
   state.isHost = true;
   $('host-room-code').textContent = code;
   const link = `${baseUrl()}?room=${code}`;
-  QRCode.toCanvas($('qr-canvas'), link, { width:180, margin:1, color:{dark:'#1c332e', light:'#ffffff'} });
+  try{
+    if(typeof QRCode !== 'undefined'){
+      QRCode.toCanvas($('qr-canvas'), link, { width:180, margin:1, color:{dark:'#1c332e', light:'#ffffff'} });
+    } else {
+      $('qr-canvas').style.display = 'none';
+      toast('QR code blocked by browser — use the link or code instead');
+    }
+  }catch(qrErr){
+    console.warn('QR render failed', qrErr);
+    $('qr-canvas').style.display = 'none';
+  }
 
   $('copy-link-btn').onclick = () => { navigator.clipboard.writeText(link); toast('Join link copied'); };
   $('copy-code-btn').onclick = () => { navigator.clipboard.writeText(code); toast('Room code copied'); };
