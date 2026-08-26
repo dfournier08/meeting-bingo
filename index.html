@@ -273,6 +273,10 @@
         <label>Quick start (loads 24 items — edit after)</label>
         <div id="preset-row" style="display:flex; flex-wrap:wrap; gap:8px;"></div>
       </div>
+      <div class="field" id="suggestions-field" style="display:none;">
+        <label>Player suggestions (tap to add to your list below)</label>
+        <div id="suggestion-chip-row" style="display:flex; flex-wrap:wrap; gap:8px;"></div>
+      </div>
       <div class="field">
         <label>Bingo items</label>
         <textarea id="items-input" placeholder="One item per line…"></textarea>
@@ -312,6 +316,15 @@
         <h3 style="margin:0 0 10px; font-size:1rem;">Bingo calls</h3>
         <ul class="players-list" id="host-calls-list">
           <li class="empty-note">No calls yet</li>
+        </ul>
+        <button class="btn btn-secondary btn-block" id="undo-bingo-btn" style="display:none; margin-top:10px;">↩️ Reverse this call — reopen game</button>
+      </div>
+
+      <div class="panel">
+        <h3 style="margin:0 0 10px; font-size:1rem;">💡 Square suggestions</h3>
+        <p class="hint" style="margin:0 0 10px;">Saved for next time — reuse them from the Create screen.</p>
+        <ul class="players-list" id="host-suggestions-list">
+          <li class="empty-note">No suggestions yet</li>
         </ul>
       </div>
 
@@ -356,6 +369,17 @@
       </div>
       <button class="bingo-call-btn" id="call-bingo-btn">🔔 CALL BINGO!</button>
       <div class="call-log" id="game-call-log"></div>
+
+      <button class="btn btn-secondary btn-block" id="suggest-open-btn" style="margin-top:14px;">💡 Suggest a square</button>
+      <div id="suggest-box" style="display:none; margin-top:10px;">
+        <div class="field">
+          <input type="text" id="suggest-input" placeholder="e.g. &quot;Can you see my screen?&quot;" maxlength="120">
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button class="btn btn-primary" id="suggest-submit-btn" style="flex:1;">Submit</button>
+          <button class="btn btn-secondary" id="suggest-cancel-btn">Cancel</button>
+        </div>
+      </div>
     </div>
 
     <!-- CHAT TAB -->
@@ -407,8 +431,8 @@
   <!-- ============ ENDED ============ -->
   <div class="screen" id="screen-ended">
     <div class="wrap">
-      <h1 class="stamp-font" style="font-size:2rem;">Game Over</h1>
-      <p style="color:#bcd3cd;">The host ended this Meeting Bingo game. Thanks for playing!</p>
+      <h1 class="stamp-font" style="font-size:2rem;" id="ended-title">Game Over</h1>
+      <p style="color:#bcd3cd;" id="ended-msg">The host ended this Meeting Bingo game. Thanks for playing!</p>
       <button class="btn btn-primary" id="ended-home-btn" style="margin-top:20px;">Back to Home</button>
     </div>
   </div>
@@ -488,6 +512,19 @@ let state = {
 $('home-host-btn').onclick = () => { show('screen-create'); };
 $('home-join-btn').onclick = () => { show('screen-join'); };
 
+/* When someone opens a link that already has a room code in it (?room=CODE),
+   this is a player-facing invite link — skip Home/Host entirely and go
+   straight to Join, with no way to wander into hosting from there. */
+let cameFromInviteLink = false;
+function goHome(){
+  if(cameFromInviteLink){
+    // Invite-link visitors never see the Host option, even on "back"/"leave".
+    show('screen-join');
+  } else {
+    show('screen-home');
+  }
+}
+
 /* ================= CREATE ================= */
 const PRESETS = [
   { name: 'Classic Meeting Fails', items: [
@@ -535,6 +572,28 @@ function renderPresets(){
 function escHtml(s){ return (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 renderPresets();
 
+/* Player-submitted suggestions, saved globally and reusable across future games */
+onValue(ref(db, 'suggestions'), (snap) => {
+  const sugg = snap.val() || {};
+  const entries = Object.entries(sugg).sort((a,b)=>(b[1].ts||0)-(a[1].ts||0));
+  const field = $('suggestions-field');
+  const row = $('suggestion-chip-row');
+  if(entries.length === 0){ field.style.display = 'none'; return; }
+  field.style.display = 'block';
+  row.innerHTML = entries.map(([id,s]) => `<button type="button" class="preset-btn" data-sid="${id}">+ ${escHtml(s.text)}</button>`).join('');
+  row.querySelectorAll('button[data-sid]').forEach(btn => {
+    const entry = sugg[btn.dataset.sid];
+    btn.onclick = () => {
+      const lines = currentItems();
+      if(lines.includes(entry.text)){ toast('Already in your list'); return; }
+      itemsInput.value = (lines.concat([entry.text])).join('\n');
+      refreshCounter();
+      btn.disabled = true;
+      btn.style.opacity = '0.5';
+    };
+  });
+});
+
 const itemsInput = $('items-input');
 const itemsCounter = $('items-counter');
 function currentItems(){
@@ -549,7 +608,7 @@ function refreshCounter(){
 itemsInput.addEventListener('input', refreshCounter);
 refreshCounter();
 
-$('create-back').onclick = () => show('screen-home');
+$('create-back').onclick = () => goHome();
 
 $('create-submit').onclick = async () => {
   const items = currentItems();
@@ -606,29 +665,60 @@ function enterHostDashboard(code){
     list.innerHTML = entries.map(c => `<li><span>🔔</span><span class="pname">${escapeHtml(c.name)}</span></li>`).reverse().join('');
   });
 
+  // Show the "undo" button only while the room is ended because of a bingo call
+  onValue(ref(db, `rooms/${code}`), (snap) => {
+    const room = snap.val() || {};
+    $('undo-bingo-btn').style.display = (room.status === 'ended' && room.winnerName) ? 'block' : 'none';
+  });
+
+  $('undo-bingo-btn').onclick = async () => {
+    await remove(ref(db, `rooms/${code}/bingoCalls`));
+    await update(ref(db, `rooms/${code}`), { status: 'active', winnerName: null });
+    toast('Bingo call reversed — game reopened');
+  };
+
+  onValue(ref(db, 'suggestions'), (snap) => {
+    const sugg = snap.val() || {};
+    const list = $('host-suggestions-list');
+    const entries = Object.entries(sugg).sort((a,b)=>(b[1].ts||0)-(a[1].ts||0));
+    if(entries.length===0){ list.innerHTML = '<li class="empty-note">No suggestions yet</li>'; return; }
+    list.innerHTML = entries.map(([id,s]) => `
+      <li>
+        <span class="pname" style="flex:1;">${escapeHtml(s.text)}${s.name ? ` <span class="hint">— ${escapeHtml(s.name)}</span>` : ''}</span>
+        <button class="icon-btn" data-sid="${id}" title="Delete suggestion">🗑️</button>
+      </li>`).join('');
+    list.querySelectorAll('button[data-sid]').forEach(btn => {
+      btn.onclick = () => remove(ref(db, `suggestions/${btn.dataset.sid}`));
+    });
+  });
+
   $('end-game-btn').onclick = async () => {
     if(!confirm('End this game for everyone? This cannot be undone.')) return;
     await update(ref(db, `rooms/${code}`), { status: 'ended' });
     toast('Game ended');
   };
 
-  $('host-leave-btn').onclick = () => { show('screen-home'); };
+  $('host-leave-btn').onclick = () => { show('screen-home'); };  // hosts always came from Home, safe as-is
 
   show('screen-host');
 }
 
 /* ================= JOIN ================= */
-$('join-back').onclick = () => show('screen-home');
-
 const urlParams = new URLSearchParams(location.search);
 if(urlParams.get('room')){
+  cameFromInviteLink = true;
   $('join-code').value = urlParams.get('room').toUpperCase();
+  $('join-code').readOnly = true;
+  $('join-back').style.display = 'none';
+  $('home-host-btn').style.display = 'none';   // invite-link visitors never see Host
   show('screen-join');
 }
 if(urlParams.get('host')){
   const hCode = urlParams.get('host').toUpperCase();
   if(localStorage.getItem('mb_host_'+hCode)) enterHostDashboard(hCode);
 }
+
+$('join-back').onclick = () => show('screen-home');
 
 $('join-submit').onclick = async () => {
   const code = $('join-code').value.trim().toUpperCase();
@@ -712,9 +802,21 @@ async function enterGame(code, playerId, name){
   });
 
   // room status
-  onValue(ref(db, `rooms/${code}/status`), (snap) => {
-    if(snap.val() === 'ended'){
+  let sawEndedOnce = false;
+  onValue(ref(db, `rooms/${code}`), (snap) => {
+    const room = snap.val() || {};
+    if(room.status === 'ended'){
+      sawEndedOnce = true;
+      $('ended-title').textContent = room.winnerName ? 'BINGO!' : 'Game Over';
+      $('ended-msg').textContent = room.winnerName
+        ? `${room.winnerName} called bingo! The host has ended this game.`
+        : 'The host ended this Meeting Bingo game. Thanks for playing!';
       show('screen-ended');
+    } else if(room.status === 'active' && sawEndedOnce){
+      // host reversed a bingo call — bounce back into the live game
+      sawEndedOnce = false;
+      showBingoBanner('Bingo call reversed — game is back on! ', true);
+      show('screen-game');
     }
   });
 
@@ -767,12 +869,39 @@ async function enterGame(code, playerId, name){
 
   $('call-bingo-btn').onclick = async () => {
     await push(ref(db, `rooms/${code}/bingoCalls`), { name: state.playerName, ts: Date.now() });
+    await update(ref(db, `rooms/${code}`), { status: 'ended', winnerName: state.playerName });
+  };
+
+  $('suggest-open-btn').onclick = () => {
+    const box = $('suggest-box');
+    const open = box.style.display !== 'none';
+    box.style.display = open ? 'none' : 'block';
+    if(!open) $('suggest-input').focus();
+  };
+  $('suggest-cancel-btn').onclick = () => {
+    $('suggest-box').style.display = 'none';
+    $('suggest-input').value = '';
+  };
+  $('suggest-submit-btn').onclick = async () => {
+    const text = $('suggest-input').value.trim();
+    if(!text) return;
+    $('suggest-submit-btn').disabled = true;
+    try{
+      await push(ref(db, 'suggestions'), { text, name: state.playerName, ts: Date.now() });
+      $('suggest-input').value = '';
+      $('suggest-box').style.display = 'none';
+      toast('Suggestion sent — thanks!');
+    }catch(e){
+      console.error(e);
+      toast('Could not send suggestion');
+    }
+    $('suggest-submit-btn').disabled = false;
   };
 
   $('leave-game-btn').onclick = () => {
     if(confirm('Leave this game? Your card stays saved on this device if you want to come back.')){
       update(myRef, { online:false });
-      show('screen-home');
+      goHome();
     }
   };
 
@@ -804,9 +933,10 @@ async function toggleMark(i){
   });
 }
 
-function showBingoBanner(name){
-  $('banner-who').textContent = `${name} called it!`;
+function showBingoBanner(name, isReversal){
+  $('banner-who').textContent = isReversal ? name : `${name} called it!`;
   $('bingo-banner').classList.add('show');
+  setTimeout(() => $('bingo-banner').classList.remove('show'), 3200);
 }
 $('bingo-banner').onclick = () => $('bingo-banner').classList.remove('show');
 
