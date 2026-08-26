@@ -305,6 +305,8 @@
         <button class="btn btn-secondary btn-sm" style="flex:1;" id="copy-link-btn">🔗 Copy join link</button>
         <button class="btn btn-secondary btn-sm" style="flex:1;" id="copy-code-btn">📋 Copy code</button>
       </div>
+      <button class="btn btn-secondary btn-block btn-sm" id="copy-host-link-btn" style="margin-top:8px;">📌 Copy MY host link (bookmark this)</button>
+      <p class="hint" style="text-align:center; margin:6px 0 0; font-size:.78rem; opacity:.75;">Save that link to get straight back to this dashboard later — it's different from the link you send players.</p>
 
       <button class="btn btn-primary btn-block" id="host-join-own-btn" style="margin-top:14px;">🎴 Join as a Player</button>
 
@@ -514,12 +516,13 @@ let state = {
 
 /* ================= HOME ================= */
 $('home-host-btn').onclick = () => { show('screen-create'); };
-$('home-join-btn').onclick = () => { show('screen-join'); };
+$('home-join-btn').onclick = () => { cameFromHostDashboard = null; $('join-code').value=''; $('join-code').readOnly=false; $('join-back').textContent='← Back'; $('join-back').style.display=''; show('screen-join'); };
 
 /* When someone opens a link that already has a room code in it (?room=CODE),
    this is a player-facing invite link — skip Home/Host entirely and go
    straight to Join, with no way to wander into hosting from there. */
 let cameFromInviteLink = false;
+let cameFromHostDashboard = null; // holds the room code when set, so join-back can return to that dashboard
 function goHome(){
   if(cameFromInviteLink){
     // Invite-link visitors never see the Host option, even on "back"/"leave".
@@ -641,14 +644,23 @@ function enterHostDashboard(code){
   state.isHost = true;
   $('host-room-code').textContent = code;
   const link = `${baseUrl()}?room=${code}`;
+  const hostLink = `${baseUrl()}?host=${code}`;
+
+  // Make the address bar itself a bookmarkable/shareable-with-yourself link
+  // back to this dashboard (separate from the player join link).
+  history.replaceState(null, '', hostLink);
 
   $('copy-link-btn').onclick = () => { navigator.clipboard.writeText(link); toast('Join link copied'); };
   $('copy-code-btn').onclick = () => { navigator.clipboard.writeText(code); toast('Room code copied'); };
+  const hostLinkBtn = $('copy-host-link-btn');
+  if(hostLinkBtn) hostLinkBtn.onclick = () => { navigator.clipboard.writeText(hostLink); toast('Host link copied — bookmark it!'); };
 
   $('host-join-own-btn').onclick = () => {
     $('join-code').value = code;
     $('join-code').readOnly = true;
-    $('join-back').style.display = 'none';
+    cameFromHostDashboard = code;
+    $('join-back').textContent = '← Back to dashboard';
+    $('join-back').style.display = '';
     show('screen-join');
     $('join-name').focus();
   };
@@ -730,7 +742,18 @@ if(urlParams.get('host')){
   if(localStorage.getItem('mb_host_'+hCode)) enterHostDashboard(hCode);
 }
 
-$('join-back').onclick = () => show('screen-home');
+$('join-back').onclick = () => {
+  if(cameFromHostDashboard){
+    const code = cameFromHostDashboard;
+    cameFromHostDashboard = null;
+    $('join-code').value = '';
+    $('join-code').readOnly = false;
+    $('join-back').textContent = '← Back';
+    enterHostDashboard(code);
+    return;
+  }
+  show('screen-home');
+};
 
 $('join-submit').onclick = async () => {
   const code = $('join-code').value.trim().toUpperCase();
