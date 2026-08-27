@@ -289,6 +289,10 @@
       <h2 style="margin:0 0 4px;">Set your card</h2>
       <p class="hint" style="margin-bottom:20px;">Enter exactly 24 items, one per line. They'll be shuffled onto a random 5×5 card for every player, with a FREE space in the middle.</p>
       <div class="field">
+        <label>Game name (optional — helps you spot it in your games list)</label>
+        <input type="text" id="create-game-name" placeholder="e.g. Monday Standup" maxlength="40">
+      </div>
+      <div class="field">
         <label>Quick start (loads 24 items — edit after)</label>
         <div id="preset-row" style="display:flex; flex-wrap:wrap; gap:8px;"></div>
       </div>
@@ -321,6 +325,7 @@
       <button class="icon-btn" id="host-leave-btn" title="Close dashboard">✕</button>
     </div>
     <div class="wrap">
+      <h2 id="host-game-name" style="display:none; margin:0 0 10px; text-align:center;"></h2>
       <div class="code-stamp">
         <div class="stamp-inner mono" id="host-room-code">------</div>
       </div>
@@ -546,7 +551,16 @@ let state = {
 };
 
 /* ================= HOME ================= */
-$('home-host-btn').onclick = () => { show('screen-create'); };
+$('home-host-btn').onclick = () => {
+  $('create-game-name').value = '';
+  itemsInput.value = '';
+  daviesCount = 0; daviesPositions = new Set();
+  document.querySelectorAll('#preset-row .preset-btn').forEach(b=>b.classList.remove('active'));
+  refreshCounter();
+  renderDaviesCountRow();
+  renderDaviesPickerGrid();
+  show('screen-create');
+};
 $('home-join-btn').onclick = () => { cameFromHostDashboard = null; $('join-code').value=''; $('join-code').readOnly=false; $('join-back').textContent='← Back'; $('join-back').style.display=''; show('screen-join'); };
 
 /* When someone opens a link that already has a room code in it (?room=CODE),
@@ -636,6 +650,10 @@ function renderMyGames(){
     openSpan.style.cursor = 'pointer'; openSpan.style.flex = '1';
     openSpan.textContent = `${e.code} · ${e.role}`;
     openSpan.onclick = e.action;
+    get(ref(db, `rooms/${e.code}/config/gameName`)).then(snap => {
+      const gameName = snap.val();
+      if(gameName) openSpan.textContent = `${gameName} (${e.code}) · ${e.role}`;
+    }).catch(()=>{});
     const delBtn = document.createElement('button');
     delBtn.className = 'icon-btn'; delBtn.title = 'Delete this game';
     delBtn.textContent = '🗑️';
@@ -801,11 +819,12 @@ $('create-submit').onclick = async () => {
     return;
   }
   const code = genCode();
+  const gameName = $('create-game-name').value.trim().slice(0, 40);
   $('create-submit').disabled = true;
   $('create-submit').textContent = 'Creating…';
   try{
     await set(ref(db, `rooms/${code}`), {
-      config: { items, createdAt: Date.now(), daviesPositions: [...daviesPositions] },
+      config: { items, createdAt: Date.now(), daviesPositions: [...daviesPositions], gameName },
       status: 'active'
     });
     localStorage.setItem('mb_host_'+code, '1');
@@ -820,10 +839,16 @@ $('create-submit').onclick = async () => {
 };
 
 /* ================= HOST DASHBOARD ================= */
-function enterHostDashboard(code){
+async function enterHostDashboard(code){
   state.roomCode = code;
   state.isHost = true;
   $('host-room-code').textContent = code;
+  const nameEl = $('host-game-name');
+  nameEl.style.display = 'none';
+  get(ref(db, `rooms/${code}/config/gameName`)).then(snap => {
+    const gameName = snap.val();
+    if(gameName){ nameEl.textContent = gameName; nameEl.style.display = 'block'; }
+  }).catch(()=>{});
   const link = `${baseUrl()}?room=${code}`;
   const hostLink = `${baseUrl()}?host=${code}`;
 
@@ -1008,6 +1033,7 @@ $('join-submit').onclick = async () => {
       await update(ref(db, `rooms/${code}/players/${playerId}`), { online:true });
     }
 
+    resetJoinBtn();
     enterGame(code, playerId, name);
   }catch(e){
     console.error(e);
@@ -1369,3 +1395,4 @@ $('ended-home-btn').onclick = () => { location.href = baseUrl(); };
 </script>
 </body>
 </html>
+
