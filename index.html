@@ -132,6 +132,11 @@
     display:flex; align-items:center; gap:10px; padding:10px 4px; border-bottom:1px solid rgba(255,255,255,0.07);
   }
   .players-list li:last-child{border-bottom:none;}
+  #davies-wall-list{max-height:220px; overflow-y:auto;}
+  #davies-wall-list li{
+    display:block; padding:10px 4px; line-height:1.35; overflow-wrap:break-word; word-break:break-word;
+  }
+  #davies-wall-list .pname{display:block; margin-bottom:2px;}
   .dot{width:8px; height:8px; border-radius:50%; background:#4bb37e; flex-shrink:0; box-shadow:0 0 6px #4bb37e;}
   .pname{font-weight:600; flex:1;}
   .sq-badge{font-family:'IBM Plex Mono',monospace; font-size:.75rem; color:var(--gold); background:rgba(217,164,65,0.15); padding:3px 8px; border-radius:20px;}
@@ -171,6 +176,7 @@
     min-width:0; overflow:hidden; overflow-wrap:break-word; word-break:break-word; hyphens:auto;
   }
   .bsq.free{background:var(--gold); color:#2a1c05; font-family:'Alfa Slab One',cursive; font-size:.9rem; border-color:var(--gold-deep);}
+  .bsq.wild-empty{background:repeating-linear-gradient(45deg, var(--card-hi), var(--card-hi) 6px, #e9ddb8 6px, #e9ddb8 12px); color:#7a6a3a; font-style:italic; border-style:dashed;}
   .bsq .stamp-mark{
     position:absolute; inset:0; border-radius:8px; display:none; align-items:center; justify-content:center;
     pointer-events:none;
@@ -242,8 +248,9 @@
 
   .toast{
     position:fixed; left:50%; bottom:90px; transform:translateX(-50%); background:var(--gold); color:#2a1c05;
-    padding:10px 18px; border-radius:30px; font-size:.85rem; font-weight:600; box-shadow:var(--shadow); z-index:60;
+    padding:10px 18px; border-radius:20px; font-size:.85rem; font-weight:600; box-shadow:var(--shadow); z-index:60;
     opacity:0; pointer-events:none; transition:opacity .25s ease;
+    max-width:80vw; text-align:center; white-space:normal; word-break:break-word;
   }
   .toast.show{opacity:1;}
 
@@ -296,6 +303,12 @@
           <span class="hint">One item per line</span>
           <span class="counter" id="items-counter">0 / 24</span>
         </div>
+      </div>
+      <div class="field">
+        <label>Davies (blank squares players fill in live)</label>
+        <p class="hint" style="margin:0 0 10px;">Optional. Pick how many squares stay blank for players to write their own short phrase in during the meeting, then tap on the card below to choose where they go.</p>
+        <div id="davies-count-row" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px;"></div>
+        <div class="bgrid" id="davies-picker-grid" style="max-width:280px; margin:0 auto; display:none;"></div>
       </div>
       <button class="btn btn-primary btn-block" id="create-submit" disabled>Create Room</button>
     </div>
@@ -384,9 +397,15 @@
     <div class="tab-panel active" id="tab-card">
       <div class="card-wrap">
         <div class="bgrid" id="bgrid"></div>
+        <p class="hint" id="davies-hint" style="display:none; text-align:center; margin:10px 0 0;">✏️ Fill in your Davies as they happen to complete your card!</p>
       </div>
       <button class="bingo-call-btn" id="call-bingo-btn">🔔 CALL BINGO!</button>
       <div class="call-log" id="game-call-log"></div>
+
+      <div id="davies-wall-box" style="display:none; margin-top:14px;">
+        <h3 style="margin:0 0 8px; font-size:.95rem;">✏️ Davies wall</h3>
+        <ul class="players-list" id="davies-wall-list"></ul>
+      </div>
 
       <button class="btn btn-secondary btn-block" id="suggest-open-btn" style="margin-top:14px;">💡 Suggest a square</button>
       <div id="suggest-box" style="display:none; margin-top:10px;">
@@ -492,9 +511,9 @@ const show = (id) => {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   $(id).classList.add('active');
 };
-function toast(msg){
+function toast(msg, durationMs){
   const t = $('toast'); t.textContent = msg; t.classList.add('show');
-  clearTimeout(toast._t); toast._t = setTimeout(()=>t.classList.remove('show'), 2200);
+  clearTimeout(toast._t); toast._t = setTimeout(()=>t.classList.remove('show'), durationMs || 2200);
 }
 function genCode(len=6){
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -716,17 +735,77 @@ function refreshCounter(){
 itemsInput.addEventListener('input', refreshCounter);
 refreshCounter();
 
+/* ---- Davies (blank wildcard squares) count + position picker ---- */
+const DAVIES_COUNT_OPTIONS = [0, 2, 4, 6];
+let daviesCount = 0;
+let daviesPositions = new Set();
+
+function renderDaviesCountRow(){
+  const row = $('davies-count-row');
+  row.innerHTML = DAVIES_COUNT_OPTIONS.map(n =>
+    `<button type="button" class="preset-btn" data-n="${n}">${n===0 ? 'None' : n}</button>`
+  ).join('');
+  row.querySelectorAll('button[data-n]').forEach(btn => {
+    btn.classList.toggle('active', Number(btn.dataset.n) === daviesCount);
+    btn.onclick = () => {
+      daviesCount = Number(btn.dataset.n);
+      // keep only as many chosen positions as the new count allows
+      if(daviesPositions.size > daviesCount){
+        daviesPositions = new Set([...daviesPositions].slice(0, daviesCount));
+      }
+      renderDaviesCountRow();
+      renderDaviesPickerGrid();
+    };
+  });
+}
+
+function renderDaviesPickerGrid(){
+  const grid = $('davies-picker-grid');
+  if(daviesCount === 0){ grid.style.display = 'none'; return; }
+  grid.style.display = 'grid';
+  grid.innerHTML = '';
+  for(let i = 0; i < 25; i++){
+    const div = document.createElement('div');
+    div.className = 'bsq';
+    div.style.cursor = 'pointer';
+    div.style.fontSize = '.6rem';
+    if(i === 12){
+      div.classList.add('free');
+      div.textContent = 'FREE';
+    } else if(daviesPositions.has(i)){
+      div.classList.add('marked');
+      div.style.background = 'var(--gold)';
+      div.textContent = 'Davies';
+      div.onclick = () => { daviesPositions.delete(i); renderDaviesPickerGrid(); };
+    } else {
+      div.textContent = '';
+      div.onclick = () => {
+        if(daviesPositions.size >= daviesCount){ toast(`Pick ${daviesCount} square${daviesCount===1?'':'s'} for Davies — tap one to remove it first`); return; }
+        daviesPositions.add(i);
+        renderDaviesPickerGrid();
+      };
+    }
+    grid.appendChild(div);
+  }
+}
+renderDaviesCountRow();
+renderDaviesPickerGrid();
+
 $('create-back').onclick = () => goHome();
 
 $('create-submit').onclick = async () => {
   const items = currentItems();
   if(items.length !== 24){ toast('Need exactly 24 items'); return; }
+  if(daviesCount > 0 && daviesPositions.size !== daviesCount){
+    toast(`Tap ${daviesCount} squares on the mini card to place your Davies`);
+    return;
+  }
   const code = genCode();
   $('create-submit').disabled = true;
   $('create-submit').textContent = 'Creating…';
   try{
     await set(ref(db, `rooms/${code}`), {
-      config: { items, createdAt: Date.now() },
+      config: { items, createdAt: Date.now(), daviesPositions: [...daviesPositions] },
       status: 'active'
     });
     localStorage.setItem('mb_host_'+code, '1');
@@ -907,11 +986,16 @@ $('join-submit').onclick = async () => {
 
       playerId = genId();
       const items = room.config.items;
-      const shuffled = shuffle(items);
+      const daviesPositions = new Set(room.config.daviesPositions || []);
+      // Only fill as many item-slots as there are non-FREE, non-Davies squares,
+      // so a card still uses exactly one line per square that needs one.
+      const itemSlots = 24 - daviesPositions.size;
+      const shuffled = shuffle(items).slice(0, itemSlots);
       const card = [];
       let ptr = 0;
       for(let i=0;i<25;i++){
         if(i===12){ card.push({text:'FREE', free:true}); }
+        else if(daviesPositions.has(i)){ card.push({text:'', free:false, wild:true, filled:false, by:null}); }
         else { card.push({text: shuffled[ptr++], free:false}); }
       }
       const marks = card.map(c => !!c.free);
@@ -988,12 +1072,25 @@ async function enterGame(code, playerId, name){
   state.card = pData.card;
   state.marks = pData.marks;
   renderCard();
+  $('davies-hint').style.display = state.card.some(c => c.wild) ? 'block' : 'none';
 
   // all players (for online list + squares)
   onValue(ref(db, `rooms/${code}/players`), (snap) => {
     state.players = snap.val() || {};
     renderPlayersList();
     renderDmTargets();
+  });
+
+  // Davies wall — live feed of every filled-in blank square, room-wide
+  onValue(ref(db, `rooms/${code}/daviesWall`), (snap) => {
+    const entries = Object.values(snap.val() || {}).sort((a,b) => (b.at||0)-(a.at||0));
+    const box = $('davies-wall-box');
+    const list = $('davies-wall-list');
+    if(entries.length === 0){ box.style.display = 'none'; return; }
+    box.style.display = 'block';
+    list.innerHTML = entries.map(e => `
+      <li><span class="pname">${escapeHtml(e.name)}</span>: “${escapeHtml(e.text)}”</li>
+    `).join('');
   });
 
   // bingo calls -> banner
@@ -1072,18 +1169,41 @@ async function enterGame(code, playerId, name){
   show('screen-game');
 }
 
+let daviesPeeked = null; // index of a filled Davies square whose full text was just shown
+
 function renderCard(){
   const grid = $('bgrid');
   grid.innerHTML = '';
   state.card.forEach((cell, i) => {
     const div = document.createElement('div');
-    div.className = 'bsq' + (cell.free ? ' free' : '') + (state.marks[i] ? ' marked' : '');
-    div.innerHTML = `<span>${escapeHtml(cell.text)}</span><span class="stamp-mark">${stampSvg}</span>`;
+    const isUnfilledWild = cell.wild && !cell.filled;
+    const isFilledWild = cell.wild && cell.filled;
+    div.className = 'bsq' + (cell.free ? ' free' : '') + (state.marks[i] ? ' marked' : '') + (isUnfilledWild ? ' wild-empty' : '');
+    const label = isUnfilledWild ? 'Tap to fill' : cell.text;
+    div.innerHTML = `<span>${escapeHtml(label)}</span><span class="stamp-mark">${stampSvg}</span>`;
     if(!cell.free){
-      div.onclick = () => toggleMark(i);
+      div.onclick = () => {
+        if(isUnfilledWild) return openDaviesFill(i);
+        if(isFilledWild) return handleDaviesTap(i);
+        toggleMark(i);
+      };
     }
     grid.appendChild(div);
   });
+}
+
+// Filled Davies squares are small and can hold up to 60 characters, so the
+// first tap just shows the full phrase (easy to misread at a glance). A
+// second tap right after that actually unmarks the square, so a stray
+// glance-tap never costs you a marked square by accident.
+function handleDaviesTap(i){
+  if(daviesPeeked === i){
+    daviesPeeked = null;
+    toggleMark(i);
+  } else {
+    daviesPeeked = i;
+    toast(state.card[i].text, 3800);
+  }
 }
 
 async function toggleMark(i){
@@ -1093,6 +1213,29 @@ async function toggleMark(i){
   await update(ref(db, `rooms/${state.roomCode}/players/${state.playerId}`), {
     marks: state.marks, squaresMarked: count
   });
+}
+
+function openDaviesFill(i){
+  const phrase = prompt('Fill in this square — a short phrase for what just happened:');
+  if(phrase === null) return;
+  const trimmed = phrase.trim();
+  if(!trimmed) return;
+  fillDavies(i, trimmed.slice(0, 60));
+}
+
+async function fillDavies(i, text){
+  state.card[i] = { ...state.card[i], text, filled: true, by: state.playerName };
+  state.marks[i] = true;
+  renderCard();
+  const count = state.marks.filter((m,idx)=> m && !state.card[idx].free).length;
+  await update(ref(db, `rooms/${state.roomCode}/players/${state.playerId}`), {
+    card: state.card, marks: state.marks, squaresMarked: count
+  });
+  try{
+    await push(ref(db, `rooms/${state.roomCode}/daviesWall`), {
+      name: state.playerName, text, at: serverTimestamp()
+    });
+  }catch(e){ console.error('Failed to post to Davies wall', e); }
 }
 
 function showBingoBanner(name, isReversal){
