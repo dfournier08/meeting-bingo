@@ -345,6 +345,7 @@
       </div>
 
       <button class="btn btn-danger btn-block" id="end-game-btn">End Game for Everyone</button>
+      <button class="btn btn-danger btn-block" id="delete-game-btn" style="margin-top:10px; opacity:.85;">🗑️ Delete This Game</button>
     </div>
   </div>
 
@@ -546,20 +547,63 @@ function goHome(){
 
 // Scan this device's saved games (as host and/or player) and list them
 // on the home screen so leaving a game never strands you without the code.
+const MY_GAMES_MAX_AGE_DAYS = 14;
+
+function forgetGame(code, isHost){
+  localStorage.removeItem('mb_'+code);
+  if(isHost){
+    localStorage.removeItem('mb_host_'+code);
+    localStorage.removeItem('mb_host_ts_'+code);
+  }
+}
+
+// Deletes a game's data from Firebase entirely (gone for everyone, not just
+// this device) and forgets it locally. Used by the manual delete buttons and
+// by the 14-day auto-cleanup.
+async function deleteGameEverywhere(code, isHost){
+  forgetGame(code, isHost);
+  try{
+    await remove(ref(db, `rooms/${code}`));
+  }catch(e){
+    console.error('Failed to delete room from Firebase', e);
+  }
+}
+
+function pruneOldGames(){
+  const cutoff = Date.now() - MY_GAMES_MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
+  for(let i = localStorage.length - 1; i >= 0; i--){
+    const key = localStorage.key(i);
+    if(key.startsWith('mb_host_ts_')){
+      const ts = Number(localStorage.getItem(key));
+      if(ts && ts < cutoff){
+        const code = key.slice('mb_host_ts_'.length);
+        deleteGameEverywhere(code, true);
+      }
+    } else if(key.startsWith('mb_') && !key.startsWith('mb_host_')){
+      const code = key.slice('mb_'.length);
+      const saved = JSON.parse(localStorage.getItem(key) || 'null');
+      if(saved && saved.savedAt && saved.savedAt < cutoff){
+        deleteGameEverywhere(code, false);
+      }
+    }
+  }
+}
+
 function renderMyGames(){
+  pruneOldGames();
   const panel = $('my-games-panel');
   const list = $('my-games-list');
   const entries = [];
   for(let i = 0; i < localStorage.length; i++){
     const key = localStorage.key(i);
-    if(key.startsWith('mb_host_') && localStorage.getItem(key) === '1'){
+    if(key.startsWith('mb_host_') && !key.startsWith('mb_host_ts_') && localStorage.getItem(key) === '1'){
       const code = key.slice('mb_host_'.length);
-      entries.push({ code, role: 'Hosting', action: () => enterHostDashboard(code) });
+      entries.push({ code, role: 'Hosting', isHost: true, action: () => enterHostDashboard(code) });
     } else if(key.startsWith('mb_') && !key.startsWith('mb_host_')){
       const code = key.slice('mb_'.length);
       const saved = JSON.parse(localStorage.getItem(key) || 'null');
       if(saved && saved.playerId){
-        entries.push({ code, role: `Playing as ${saved.name}`, action: () => enterGame(code, saved.playerId, saved.name) });
+        entries.push({ code, role: `Playing as ${saved.name}`, isHost: false, action: () => enterGame(code, saved.playerId, saved.name) });
       }
     }
   }
@@ -568,9 +612,23 @@ function renderMyGames(){
   list.innerHTML = '';
   entries.forEach(e => {
     const li = document.createElement('li');
-    li.style.cursor = 'pointer'; li.style.justifyContent = 'space-between';
-    li.innerHTML = `<span>${escapeHtml(e.code)} &middot; ${escapeHtml(e.role)}</span><span>&rarr;</span>`;
-    li.onclick = e.action;
+    li.style.justifyContent = 'space-between';
+    const openSpan = document.createElement('span');
+    openSpan.style.cursor = 'pointer'; openSpan.style.flex = '1';
+    openSpan.textContent = `${e.code} · ${e.role}`;
+    openSpan.onclick = e.action;
+    const delBtn = document.createElement('button');
+    delBtn.className = 'icon-btn'; delBtn.title = 'Delete this game';
+    delBtn.textContent = '🗑️';
+    delBtn.onclick = async (ev) => {
+      ev.stopPropagation();
+      if(confirm(`Permanently delete ${e.code}? This removes it for everyone and can't be undone.`)){
+        await deleteGameEverywhere(e.code, e.isHost);
+        renderMyGames();
+      }
+    };
+    li.appendChild(openSpan);
+    li.appendChild(delBtn);
     list.appendChild(li);
   });
 }
@@ -672,6 +730,7 @@ $('create-submit').onclick = async () => {
       status: 'active'
     });
     localStorage.setItem('mb_host_'+code, '1');
+    localStorage.setItem('mb_host_ts_'+code, String(Date.now()));
     enterHostDashboard(code);
   }catch(e){
     console.error(e);
@@ -765,6 +824,14 @@ function enterHostDashboard(code){
     toast('Game ended');
   };
 
+  $('delete-game-btn').onclick = async () => {
+    if(!confirm(`Permanently delete this game (${code})? This removes it for everyone and can't be undone.`)) return;
+    await deleteGameEverywhere(code, true);
+    toast('Game deleted');
+    show('screen-home');
+    renderMyGames();
+  };
+
   $('host-leave-btn').onclick = () => { show('screen-home'); };  // hosts always came from Home, safe as-is
 
   show('screen-host');
@@ -852,7 +919,7 @@ $('join-submit').onclick = async () => {
       await set(ref(db, `rooms/${code}/players/${playerId}`), {
         name, card, marks, squaresMarked:0, online:true, joinedAt: Date.now()
       });
-      localStorage.setItem('mb_'+code, JSON.stringify({playerId, name}));
+      localStorage.setItem('mb_'+code, JSON.stringify({playerId, name, savedAt: Date.now()}));
     } else {
       await update(ref(db, `rooms/${code}/players/${playerId}`), { online:true });
     }
