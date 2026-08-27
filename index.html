@@ -540,7 +540,39 @@ function goHome(){
     show('screen-join');
   } else {
     show('screen-home');
+    renderMyGames();
   }
+}
+
+// Scan this device's saved games (as host and/or player) and list them
+// on the home screen so leaving a game never strands you without the code.
+function renderMyGames(){
+  const panel = $('my-games-panel');
+  const list = $('my-games-list');
+  const entries = [];
+  for(let i = 0; i < localStorage.length; i++){
+    const key = localStorage.key(i);
+    if(key.startsWith('mb_host_') && localStorage.getItem(key) === '1'){
+      const code = key.slice('mb_host_'.length);
+      entries.push({ code, role: 'Hosting', action: () => enterHostDashboard(code) });
+    } else if(key.startsWith('mb_') && !key.startsWith('mb_host_')){
+      const code = key.slice('mb_'.length);
+      const saved = JSON.parse(localStorage.getItem(key) || 'null');
+      if(saved && saved.playerId){
+        entries.push({ code, role: `Playing as ${saved.name}`, action: () => enterGame(code, saved.playerId, saved.name) });
+      }
+    }
+  }
+  if(entries.length === 0){ panel.style.display = 'none'; return; }
+  panel.style.display = '';
+  list.innerHTML = '';
+  entries.forEach(e => {
+    const li = document.createElement('li');
+    li.style.cursor = 'pointer'; li.style.justifyContent = 'space-between';
+    li.innerHTML = `<span>${escapeHtml(e.code)} &middot; ${escapeHtml(e.role)}</span><span>&rarr;</span>`;
+    li.onclick = e.action;
+    list.appendChild(li);
+  });
 }
 
 /* ================= CREATE ================= */
@@ -752,6 +784,16 @@ if(urlParams.get('host')){
   const hCode = urlParams.get('host').toUpperCase();
   if(localStorage.getItem('mb_host_'+hCode)) enterHostDashboard(hCode);
 }
+if(urlParams.get('rejoin')){
+  const rCode = urlParams.get('rejoin').toUpperCase();
+  const saved = JSON.parse(localStorage.getItem('mb_'+rCode) || 'null');
+  if(saved && saved.playerId){
+    enterGame(rCode, saved.playerId, saved.name);
+  }
+}
+if(!urlParams.get('room') && !urlParams.get('host') && !urlParams.get('rejoin')){
+  renderMyGames();
+}
 
 $('join-back').onclick = () => {
   if(cameFromHostDashboard){
@@ -834,6 +876,10 @@ const stampSvg = `<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="34" fill
 async function enterGame(code, playerId, name){
   const hostOfThisRoom = localStorage.getItem('mb_host_'+code) === '1';
   state.roomCode = code; state.playerId = playerId; state.playerName = name; state.isHost = hostOfThisRoom;
+
+  // Make the address bar itself a bookmarkable/shareable-with-yourself link
+  // back into this game, same idea as the host dashboard link.
+  history.replaceState(null, '', `${baseUrl()}?rejoin=${code}`);
 
   $('game-room-code').textContent = code;
   $('game-player-name').textContent = name;
